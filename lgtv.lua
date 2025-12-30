@@ -3,31 +3,32 @@ LGTVController.__index = LGTVController
 
 -- Configuration
 local config = {
-    tv_ip = "",
-    tv_mac_address = "",
+    tv_ip = "192.168.86.25",
+    tv_mac_address = "24:E8:53:2F:3D:F6",
     tv_input = "HDMI_1", -- Input to which your Mac is connected
     switch_input_on_wake = true, -- When computer wakes, switch to `tv_input`
-    debug = false, -- Enable debug messages
+    debug = true, -- Enable debug messages
     control_audio = false, -- Control audio volume/mute with keyboard
     prevent_sleep_when_using_other_input = true, -- Prevent TV sleep if TV is on an input other than `tv_input`
     disable_lgtv = false, -- Disable this script entirely by setting this to true
     -- You can also disable it by creating an empty file  at `~/.disable_lgtv`.
 
     -- You likely will not need to change anything below this line
-    screen_off_command = "screen_off",
+    screen_off_command = "power_off",
     key_file_path = "~/.aiopylgtv.sqlite",
-    connected_tv_identifiers = {"LG TV", "LG TV SSCR2"},
-    bin_path = "~/bin/bscpylgtvcommand",
-    wakeonlan_path = "~/bin/wakeonlan",
-    app_id = "com.webos.app." .. ("HDMI_1"):lower():gsub("_", ""),
+    connected_tv_identifiers = {"LG TV", "LG TV SSCR2", "LG TV SSCR2 (0x938621778)"},
+    bin_path = "/Users/theison/Library/Python/3.9/bin/bscpylgtvcommand",
+    wakeonlan_path = "/opt/homebrew/bin/wakeonlan",
     set_pc_mode_on_wake = true,
-    tv_device_name = "Mac",
+    tv_device_name = "Macbook Pro",
     debounce_seconds = 10,
     before_sleep_command = nil,
     after_sleep_command = nil,
     before_wake_command = nil,
     after_wake_command = nil,
 }
+
+config.app_id = "com.webos.app." .. config.tv_input:lower():gsub("_", "")
 
 if config.tv_ip == "" or config.tv_mac_address == "" then
   print("TV IP and MAC address not set. Please set them first.")
@@ -257,17 +258,26 @@ function LGTVController:setup_watchers()
             log_debug("LGTV feature disabled. Skipping event handling.")
             return
         end
+-- =======================================================
+-- NUEVO BLOCK ADDED
+-- =======================================================
+local isWakeEvent = eventType == hs.caffeinate.watcher.screensDidWake or
+                    eventType == hs.caffeinate.watcher.systemDidWake or
+                    eventType == hs.caffeinate.watcher.screensDidUnlock
 
-        if self:is_connected() then
-            if eventType == hs.caffeinate.watcher.screensDidWake or
-               eventType == hs.caffeinate.watcher.systemDidWake or
-               eventType == hs.caffeinate.watcher.screensDidUnlock then
-                self:handle_wake_event()
-            elseif eventType == hs.caffeinate.watcher.screensDidSleep or
-                   eventType == hs.caffeinate.watcher.systemWillPowerOff then
-                self:handle_sleep_event()
-            end
-        end
+local isSleepEvent = eventType == hs.caffeinate.watcher.screensDidSleep or
+                     eventType == hs.caffeinate.watcher.systemWillSleep or -- He añadido este evento para más fiabilidad
+                     eventType == hs.caffeinate.watcher.systemWillPowerOff
+
+-- Ahora, separamos la lógica
+if isWakeEvent then
+    -- Si el Mac se despierta, siempre intentamos encender la TV
+    self:handle_wake_event()
+elseif isSleepEvent and self:is_connected() then
+    -- Si el Mac se duerme, SÓLO apagamos la TV si está conectada
+    self:handle_sleep_event()
+end
+-- =======================================================
     end)
 
     self.audio_event_tap = hs.eventtap.new(
